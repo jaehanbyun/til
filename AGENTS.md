@@ -45,15 +45,36 @@ Supported frontmatter:
 
 ```md
 ---
-title: "Klustered: Level One"
-description: "Kubernetes debugging lab notes."
+title: "Service selector가 틀리면 Endpoints가 비는 이유"
+description: "Kubernetes Service가 Pod를 찾는 방식과 endpoints 확인 순서."
 date: "2026-06-07"
-tags: [kubernetes, kubectl, service]
-source: "https://labs.iximiuz.com/"
+tags: [kubernetes, service, selector, endpoints, debugging]
+source: "https://labs.iximiuz.com/challenges/klustered-l1-b71142bd"
+lab: "Klustered: Level One"
 ---
 ```
 
 Set `draft: true` to exclude a note from the generated site.
+
+## Writing Guidance
+
+The archive should read like a reusable infrastructure knowledge base, not a chronological lab journal.
+
+- Prefer knowledge-first titles that expose the learned idea directly.
+- Keep lab names such as `Klustered: Level One` in `source` or `lab`, not as the primary title.
+- If one lab produces several independent ideas, split it into several notes.
+- Do not force one fixed body template on every note.
+- For each provided link or document, choose the article shape that best preserves the useful knowledge.
+
+Use these body patterns as options:
+
+- Troubleshooting note: symptom, observed signals, cause model, verification/fix, revisit points.
+- Concept note: core idea, when it matters, how it works, example, caveats.
+- Command recipe: goal, minimal commands, how to read output, branches on failure, verification/rollback.
+- Comparison note: confused concepts, differences, selection criteria, practical example.
+- Mental model note: one-line model, components, request/data flow, common breakpoints.
+
+When summarizing external labs, keep attribution and avoid reproducing the original prompt, guided hints, or protected content. Capture personal observations, command paths, mental models, and operational checks.
 
 ## Build And Preview
 

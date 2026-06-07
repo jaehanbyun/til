@@ -7,6 +7,7 @@
     noteKey: archive.initialNoteKey || archive.notes[0]?.key || "",
     lang: archive.locale || "ko",
     query: "",
+    view: archive.initialView || "category",
   };
 
   const els = {
@@ -15,10 +16,18 @@
     mobileNoteList: document.getElementById("mobileNoteList"),
     emptyState: document.getElementById("emptyState"),
     searchInput: document.getElementById("searchInput"),
+    article: document.getElementById("article"),
     articleCategory: document.getElementById("articleCategory"),
     articleDate: document.getElementById("articleDate"),
     articleTitle: document.getElementById("articleTitle"),
     articleSummary: document.getElementById("articleSummary"),
+    categoryResults: document.getElementById("categoryResults"),
+    categoryResultsTitle: document.getElementById("categoryResultsTitle"),
+    categoryResultsSummary: document.getElementById("categoryResultsSummary"),
+    categoryResultsCount: document.getElementById("categoryResultsCount"),
+    categoryCardGrid: document.getElementById("categoryCardGrid"),
+    categoryEmptyState: document.getElementById("categoryEmptyState"),
+    sourceLink: document.getElementById("sourceLink"),
     readTime: document.getElementById("readTime"),
     learningList: document.getElementById("learningList"),
     contextBody: document.getElementById("contextBody"),
@@ -26,7 +35,9 @@
     publishBody: document.getElementById("publishBody"),
     nextBody: document.getElementById("nextBody"),
     commandBlock: document.getElementById("commandBlock"),
+    fullNoteBody: document.getElementById("fullNoteBody"),
     pathList: document.getElementById("pathList"),
+    tocNav: document.getElementById("tocNav"),
     themeToggle: document.getElementById("themeToggle"),
     copyCommand: document.getElementById("copyCommand"),
   };
@@ -56,11 +67,13 @@
       contentKo.summary,
       contentKo.context,
       contentKo.commands,
+      contentKo.text,
       ...(contentKo.points || []).flatMap((point) => [point.title, point.body]),
       contentEn.title,
       contentEn.summary,
       contentEn.context,
       contentEn.commands,
+      contentEn.text,
       ...(contentEn.points || []).flatMap((point) => [point.title, point.body]),
     ]
       .join(" ")
@@ -84,9 +97,9 @@
       button.innerHTML = `<span class="cat-color"></span><span>${escapeHtml(category.label)}</span><span class="count">${count}</span>`;
       button.addEventListener("click", () => {
         state.category = category.id;
-        const first = archive.notes.find(noteMatches);
-        if (first) state.noteKey = first.key;
+        state.view = "category";
         render();
+        if (category.url) history.replaceState(null, "", category.url);
       });
       li.append(button);
       els.categoryList.append(li);
@@ -111,10 +124,7 @@
         <span class="lang-pair">KO/EN</span>
       `;
       button.addEventListener("click", () => {
-        state.noteKey = note.key;
-        renderArticle();
-        renderNoteLists();
-        history.replaceState(null, "", content.url);
+        openNote(note);
       });
       li.append(button);
       target.append(li);
@@ -133,17 +143,23 @@
     const content = getContent(note);
     const category = getCategory(note.category);
 
+    els.categoryResults.hidden = true;
+    els.article.hidden = false;
     document.documentElement.lang = state.lang;
     els.articleCategory.textContent = category.label;
     els.articleDate.textContent = note.date || "";
     els.articleTitle.textContent = content.title || "";
     els.articleSummary.textContent = content.summary || "";
+    renderSourceLink(content.source);
     els.readTime.textContent = note.readTime || "";
     renderParagraph(els.contextBody, content.context);
     renderParagraph(els.commandsBody, content.commands);
     renderParagraph(els.publishBody, content.publish);
     renderParagraph(els.nextBody, content.next);
     els.commandBlock.textContent = note.command || "";
+    if (els.fullNoteBody) {
+      els.fullNoteBody.innerHTML = content.html || "";
+    }
 
     els.learningList.innerHTML = "";
     for (const point of content.points || []) {
@@ -165,14 +181,99 @@
     }
   }
 
+  function renderCategoryResults() {
+    const category = getCategory(state.category);
+    const filtered = archive.notes.filter(noteMatches);
+    const title = state.query
+      ? (state.lang === "ko" ? "검색 결과" : "Search results")
+      : category.label;
+    const noteLabel = state.lang === "ko" ? "개 글" : "notes";
+
+    els.article.hidden = true;
+    els.categoryResults.hidden = false;
+    els.categoryResultsTitle.textContent = title;
+    els.categoryResultsSummary.textContent = category.summary || "";
+    els.categoryResultsCount.textContent = `${filtered.length} ${noteLabel}`;
+    els.categoryCardGrid.innerHTML = "";
+
+    for (const note of filtered) {
+      const content = getContent(note);
+      const noteCategory = getCategory(note.category);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "result-card";
+      button.dataset.noteKey = note.key;
+      button.innerHTML = `
+        <span class="result-card-top">
+          <span>${escapeHtml(noteCategory.label)}</span>
+          <span>${escapeHtml(note.date || "")}</span>
+        </span>
+        <strong>${escapeHtml(content.title || "")}</strong>
+        <span class="result-summary">${escapeHtml(content.summary || "")}</span>
+        <span class="tag-row">${(note.tags || []).slice(0, 4).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</span>
+      `;
+      button.addEventListener("click", () => {
+        openNote(note);
+      });
+      els.categoryCardGrid.append(button);
+    }
+
+    els.categoryEmptyState.classList.toggle("visible", filtered.length === 0);
+
+    for (const link of document.querySelectorAll("[data-lang]")) {
+      link.classList.toggle("active", link.dataset.lang === state.lang);
+    }
+  }
+
+  function renderToc() {
+    if (!els.tocNav) return;
+    if (state.view === "category") {
+      els.tocNav.innerHTML = `
+        <a class="toc-link" href="#categoryResults">${state.lang === "ko" ? "글 목록" : "Note list"}</a>
+      `;
+      return;
+    }
+    els.tocNav.innerHTML = `
+      <a class="toc-link" href="#context">${state.lang === "ko" ? "실습 맥락" : "Lab context"}</a>
+      <a class="toc-link" href="#commands">${state.lang === "ko" ? "기록할 명령어" : "Commands"}</a>
+      <a class="toc-link" href="#publish">${state.lang === "ko" ? "GitHub 자동 렌더링" : "GitHub rendering"}</a>
+      <a class="toc-link" href="#next">${state.lang === "ko" ? "다음 노트" : "Next notes"}</a>
+      <a class="toc-link" href="#full-note">${state.lang === "ko" ? "전체 정리" : "Full note"}</a>
+    `;
+  }
+
+  function openNote(note) {
+    const content = getContent(note);
+    state.noteKey = note.key;
+    state.view = "article";
+    render();
+    history.replaceState(null, "", content.url);
+  }
+
   function renderParagraph(target, text) {
     target.innerHTML = `<p>${escapeHtml(text || "")}</p>`;
+  }
+
+  function renderSourceLink(source) {
+    if (!els.sourceLink) return;
+    if (!source) {
+      els.sourceLink.hidden = true;
+      els.sourceLink.removeAttribute("href");
+      return;
+    }
+    els.sourceLink.hidden = false;
+    els.sourceLink.href = source;
   }
 
   function render() {
     renderCategories();
     renderNoteLists();
-    renderArticle();
+    if (state.view === "category") {
+      renderCategoryResults();
+    } else {
+      renderArticle();
+    }
+    renderToc();
   }
 
   function escapeHtml(value = "") {
@@ -201,8 +302,7 @@
 
   els.searchInput.addEventListener("input", (event) => {
     state.query = event.target.value;
-    const first = archive.notes.find(noteMatches);
-    if (first) state.noteKey = first.key;
+    state.view = "category";
     render();
   });
 

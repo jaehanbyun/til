@@ -814,7 +814,7 @@ const CATEGORY_COLORS = {
 function renderTilAppPage(catalog, locale, options = {}) {
   const initialCategory = options.initialCategory || "all";
   const initialNoteKey = options.initialNoteKey || catalog.notes[0]?.key || "";
-  const data = buildClientArchive(catalog, locale, initialCategory, initialNoteKey);
+  const data = buildClientArchive(catalog, locale, initialCategory, initialNoteKey, options.initialView);
   const title = options.title || "TIL Archive";
   const description =
     options.description ||
@@ -899,6 +899,19 @@ function renderTilAppPage(catalog, locale, options = {}) {
             <ul class="note-list" id="mobileNoteList"></ul>
           </div>
 
+          <section class="category-results" id="categoryResults" aria-labelledby="categoryResultsTitle" hidden>
+            <header class="category-results-head">
+              <div>
+                <p class="section-label">${locale === "ko" ? "선택한 카테고리" : "Selected category"}</p>
+                <h1 id="categoryResultsTitle"></h1>
+                <p id="categoryResultsSummary"></p>
+              </div>
+              <span class="pill" id="categoryResultsCount"></span>
+            </header>
+            <div class="result-card-grid" id="categoryCardGrid"></div>
+            <div class="empty-state" id="categoryEmptyState">${locale === "ko" ? "검색 조건에 맞는 글이 없습니다." : "No notes match this filter."}</div>
+          </section>
+
           <article class="article-grid" id="article">
             <header class="article-header">
               <div class="doc-meta-row">
@@ -911,6 +924,9 @@ function renderTilAppPage(catalog, locale, options = {}) {
               </div>
               <h1 class="article-title" id="articleTitle"></h1>
               <p class="article-summary" id="articleSummary"></p>
+              <div class="source-row">
+                <a class="source-chip" id="sourceLink" href="#" target="_blank" rel="noreferrer noopener" hidden>${locale === "ko" ? "원문 보기" : "View source"}</a>
+              </div>
             </header>
 
             <section class="panel" aria-labelledby="learningTitle">
@@ -970,6 +986,11 @@ function renderTilAppPage(catalog, locale, options = {}) {
               <h2>${locale === "ko" ? "다음에 연결할 노트" : "Next notes to connect"}</h2>
               <div class="article-copy" id="nextBody"></div>
             </section>
+
+            <section class="article-section full-note-section" id="full-note">
+              <h2>${locale === "ko" ? "전체 정리" : "Full note"}</h2>
+              <div class="prose" id="fullNoteBody"></div>
+            </section>
           </article>
         </div>
       </main>
@@ -978,26 +999,13 @@ function renderTilAppPage(catalog, locale, options = {}) {
         <div class="toc-card">
           <div>
             <p class="section-label">On this page</p>
-            <nav>
+            <nav id="tocNav">
               <a class="toc-link" href="#context">${locale === "ko" ? "실습 맥락" : "Lab context"}</a>
               <a class="toc-link" href="#commands">${locale === "ko" ? "기록할 명령어" : "Commands"}</a>
               <a class="toc-link" href="#publish">${locale === "ko" ? "GitHub 자동 렌더링" : "GitHub rendering"}</a>
               <a class="toc-link" href="#next">${locale === "ko" ? "다음 노트" : "Next notes"}</a>
+              <a class="toc-link" href="#full-note">${locale === "ko" ? "전체 정리" : "Full note"}</a>
             </nav>
-          </div>
-
-          <div class="progress-card">
-            <strong>${locale === "ko" ? "이번 주 기록" : "This week"}</strong>
-            <div class="coverage" aria-label="Weekly writing coverage">
-              ${renderCoverage(catalog.notes.length)}
-            </div>
-          </div>
-
-          <div class="progress-card">
-            <strong>${locale === "ko" ? "카테고리 운영 원칙" : "Category rules"}</strong>
-            <div class="progress-line"><span>slug</span><strong>${locale === "ko" ? "영문 소문자" : "lowercase"}</strong></div>
-            <div class="progress-line"><span>source</span><strong>git repo</strong></div>
-            <div class="progress-line"><span>language</span><strong>ko / en</strong></div>
           </div>
         </div>
       </aside>
@@ -1012,23 +1020,23 @@ function safeJson(data) {
   return JSON.stringify(data).replace(/</g, "\\u003c");
 }
 
-function renderCoverage(count) {
-  return Array.from({ length: 7 }, (_item, index) => `<span${index < Math.min(count, 7) ? ' class="done"' : ""}></span>`).join("");
-}
-
-function buildClientArchive(catalog, locale, initialCategory, initialNoteKey) {
+function buildClientArchive(catalog, locale, initialCategory, initialNoteKey, initialView = "category") {
   const categories = [
     {
       id: "all",
-      label: "All",
+      label: locale === "ko" ? "전체" : "All",
+      summary: locale === "ko" ? "전체 카테고리의 지식 노트입니다." : "Knowledge notes across every category.",
       color: CATEGORY_COLORS.all,
       count: catalog.notes.length,
+      url: toUrl(localeHome(locale)),
     },
     ...catalog.categories.map((category) => ({
       id: category.id,
       label: category.label,
+      summary: category.summary,
       color: CATEGORY_COLORS[category.id] || CATEGORY_COLORS.all,
       count: category.count,
+      url: toUrl(categoryPath(category.id, locale)),
     })),
   ];
 
@@ -1039,6 +1047,7 @@ function buildClientArchive(catalog, locale, initialCategory, initialNoteKey) {
     locale,
     initialCategory,
     initialNoteKey: fallbackNote?.key || "",
+    initialView,
     categories,
     notes,
   };
@@ -1070,14 +1079,23 @@ function buildClientNote(note) {
 }
 
 function extractClientContent(note, variant, locale) {
-  const takeaways = extractBullets(variant.body, locale === "ko" ? ["배운 점", "다시 볼 키워드"] : ["Takeaways", "Revisit"]);
+  const takeaways = extractBullets(
+    variant.body,
+    locale === "ko"
+      ? ["배운 점", "다시 볼 키워드", "다시 볼 포인트", "주의점"]
+      : ["Takeaways", "Revisit", "Caveats"],
+  );
   const context = extractSectionText(
     variant.body,
-    locale === "ko" ? ["실습 목표", "핵심 아이디어", "핵심 흐름"] : ["Goal", "Core Idea", "Core Flow"],
+    locale === "ko"
+      ? ["실습 목표", "핵심 아이디어", "핵심 흐름", "한 줄 결론", "한 줄 모델", "목표"]
+      : ["Goal", "Core Idea", "Core Flow", "One-line Model"],
   );
   const commands = extractSectionText(
     variant.body,
-    locale === "ko" ? ["관찰한 증상", "확인할 파일", "관찰 포인트"] : ["Symptoms", "Unit Files", "What to Observe"],
+    locale === "ko"
+      ? ["관찰한 증상", "관찰 신호", "관찰 포인트", "확인할 파일", "확인 및 수정 패턴", "최소 명령"]
+      : ["Symptoms", "Observed Signals", "What to Observe", "Unit Files", "Verification and Fix Pattern", "Minimal Commands"],
   );
   const next = locale === "ko"
     ? "다음 노트는 같은 카테고리의 인접 개념으로 연결합니다. 실습을 반복할수록 명령어, 실패 조건, 원인 가설을 같은 포맷으로 남기는 것이 목표입니다."
@@ -1087,6 +1105,9 @@ function extractClientContent(note, variant, locale) {
     locale,
     title: variant.frontmatter.title || note.title,
     summary: variant.frontmatter.description || variant.excerpt || note.description,
+    source: variant.frontmatter.source || note.source || "",
+    html: variant.html,
+    text: variant.plainText,
     points: normalizeLearningPoints(takeaways, variant, locale),
     context: context || variant.excerpt || note.description,
     commands: commands || (locale === "ko" ? "재현 가능한 명령어와 관찰 결과를 함께 기록합니다." : "Keep reproducible commands together with the observations."),
@@ -1095,7 +1116,7 @@ function extractClientContent(note, variant, locale) {
         ? "카테고리는 URL과 탐색의 기준입니다. 별도 작성 화면을 거치지 않고 repo에 Markdown을 올리면 빌드 단계에서 카테고리와 한/영 쌍을 자동으로 인덱싱합니다."
         : "Categories drive URLs and navigation. The archive does not require a manual new-note action; Markdown pushed to the repository is indexed during the build and paired by language slug.",
     next,
-    url: notePath(note, variant.locale),
+    url: toUrl(notePath(note, variant.locale)),
   };
 }
 
@@ -1261,6 +1282,7 @@ function main() {
           description: variant.frontmatter.description || note.description,
           initialCategory: note.category,
           initialNoteKey: note.key,
+          initialView: "article",
           localeLinks: {
             ko: note.variants.ko ? notePath(note, "ko") : "",
             en: note.variants.en ? notePath(note, "en") : "",
