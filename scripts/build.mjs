@@ -30,6 +30,10 @@ const CATEGORY_META = {
     label: "Network",
     summary: "TCP, DNS, routing, sockets, proxies, and protocol-level troubleshooting.",
   },
+  openstack: {
+    label: "OpenStack",
+    summary: "OpenStack deployment, Kolla-Ansible operations, and infrastructure automation notes.",
+  },
 };
 
 const UI = {
